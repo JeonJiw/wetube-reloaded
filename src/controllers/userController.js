@@ -1,6 +1,8 @@
 import User from "../models/User";
 import fetch from "node-fetch";
 import bcrypt from "bcrypt";
+import { render } from "pug";
+import Video from "../models/Video";
 
 export const getJoin = (req, res) => {
   res.render("join", { pageTitle: "Join" });
@@ -149,9 +151,10 @@ export const getEdit = (req, res) => {
 export const postEdit = async (req, res) => {
   const {
     session: {
-      user: { _id },
+      user: { _id, avatarUrl },
     },
     body: { name, email, username, location },
+    file,
   } = req;
 
   //user가 email, username을 바꾸려고 하는지 체크
@@ -176,6 +179,7 @@ export const postEdit = async (req, res) => {
   const updateUser = await User.findByIdAndUpdate(
     _id,
     {
+      avatarUrl: file ? file.path : avatarUrl,
       name,
       email,
       username,
@@ -187,5 +191,52 @@ export const postEdit = async (req, res) => {
   req.session.user = updateUser;
   return res.redirect("/users/edit");
 };
+
+export const getChangePw = (req, res) => {
+  if (req.session.user.socialOnly === true) {
+    return res.redirect("/");
+  }
+  return res.render("users/change-password", { pageTitle: "Change Password" });
+};
+
+export const postChangePw = async (req, res) => {
+  const {
+    session: {
+      user: { _id },
+    },
+    body: { oldPw, newPw, newPwComfirm },
+  } = req;
+  const user = await User.findById(_id);
+  const of = await bcrypt.compare(oldPw, user.password);
+  if (!of) {
+    return res.status(400).render("users/change-password", {
+      pageTitle: "Change Password",
+      errorMessage: "The current password is incorrect.",
+    });
+  }
+
+  if (newPw !== newPwComfirm) {
+    return res.status(400).render("users/change-password", {
+      pageTitle: "Change Password",
+      errorMessage: "The password does not match the confirmation.",
+    });
+  }
+
+  user.password = newPw;
+  await user.save();
+
+  return res.redirect("/");
+};
+
+export const see = async (req, res) => {
+  const { id } = req.params;
+  const user = await User.findById(id).populate("videos");
+  if (!user) {
+    return res.status(404).render("404"), { pageTitle: "User is not found." };
+  }
+  return res.render("users/profile", {
+    pageTitle: user.name,
+    user,
+  });
+};
 export const remove = (req, res) => res.send("Delete User");
-export const see = (req, res) => res.send("See profile");
